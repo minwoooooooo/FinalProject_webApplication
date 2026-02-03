@@ -1,138 +1,64 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useReport } from '../contexts/ReportContext';
 
 const Report = () => {
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
   
-  const [reports, setReports] = useState(() => {
-    const saved = localStorage.getItem('myReports');
-    const parsed = saved ? JSON.parse(saved) : [];
-    // 처리 중이던 건 오류로 처리 (새로고침 대응)
-    return parsed.map(item => {
-        if (item.status === 'processing') {
-            return {
-                ...item,
-                status: 'error',
-                progressMsg: '분석 중단됨 (재시도 필요)',
-                title: '분석 취소됨'
-            };
-        }
-        return item;
-    });
-  });
+  // 1. Context에서 데이터와 함수 가져오기
+  const { user } = useAuth();
+  const { reports, uploadVideo, removeReport } = useReport();
+  
+  // 2. 내 기기(Raspberry Pi) 관련 상태
+  const [myDevice, setMyDevice] = useState(null);
+  const [saveToDevice, setSaveToDevice] = useState(false);
 
+  // 3. 내 기기 정보 조회 (Java 서버)
   useEffect(() => {
-    localStorage.setItem('myReports', JSON.stringify(reports));
-  }, [reports]);
-
-  // ★ [핵심] S3 삭제 + 목록 삭제 함수
-  const deleteReport = async (e, id, filename) => {
-    e.stopPropagation(); 
+    if (!user || !user.history_id) return;
     
-    if (window.confirm('이 신고 내역을 삭제하시겠습니까?\n(서버의 영상 파일도 함께 삭제됩니다)')) {
-      
-      // 1. 만약 파일명이 있다면 서버에 삭제 요청 (분석 완료된 건)
-      if (filename) {
-          try {
-              await fetch(`http://localhost:8000/api/delete-video?filename=${filename}`, {
-                  method: 'DELETE',
-                  credentials: 'include' // 로그인 정보 전송
-              });
-              console.log("서버 파일 삭제 요청 완료");
-          } catch (err) {
-              console.error("서버 파일 삭제 중 오류 (무시하고 목록 삭제 진행):", err);
+    const fetchMyDevice = async () => {
+      try {
+        const res = await fetch(`http://localhost:8080/api/device/${user.history_id}`);
+        if (res.ok) {
+          const devices = await res.json();
+          // 기기가 존재하면 첫 번째 기기를 내 기기로 설정하고, 저장 옵션 켜기
+          if (devices && devices.length > 0) {
+            setMyDevice(devices[0]);
+            setSaveToDevice(true); 
           }
+        }
+      } catch (err) { 
+        console.error("기기 정보 조회 실패:", err); 
       }
+    };
+    fetchMyDevice();
+  }, [user]);
 
-      // 2. 화면 목록에서 삭제
-      setReports(prev => prev.filter(item => item.id !== id));
-    }
-  };
-
-  const updateItemStatus = (id, newStatus, message, finalData = null) => {
-    setReports(prev => prev.map(item => {
-      if (item.id === id) {
-        return {
-          ...item,
-          status: newStatus,
-          progressMsg: message,
-          ...finalData
-        };
-      }
-      return item;
-    }));
-  };
-
-  const processVideoAnalysis = async (id, file) => {
-    updateItemStatus(id, 'processing', 'AI가 영상을 정밀 분석 중입니다...');
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      // ★ [확인] 주소와 옵션이 제대로 되어있는지 확인
-      const res = await fetch('http://localhost:8000/api/analyze-direct', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const violationTitle = data.result ? data.result.split('(')[0].trim() : '위반 감지';
-
-        setReports(prev => prev.map(item => {
-            if (item.id === id) {
-                return {
-                    ...item,
-                    status: 'complete',
-                    title: violationTitle,
-                    plate: data.plate || '식별불가',
-                    date: data.time,
-                    time: data.time,
-                    desc: data.result,
-                    videoSrc: URL.createObjectURL(file),
-                    // ★ [중요] 삭제를 위해 파일명을 여기에 저장해둡니다!
-                    filename: file.name 
-                };
-            }
-            return item;
-        }));
-        
-      } else {
-        throw new Error("서버 에러 응답");
-      }
-
-    } catch (error) {
-      console.error("분석 실패:", error);
-      updateItemStatus(id, 'error', '서버 연결 실패');
-    }
-  };
-
+  // 4. 파일 선택 시 업로드 처리 (Context 함수 사용)
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const newId = Date.now();
+    // Context의 uploadVideo 호출 (기기 저장 여부와 기기 정보 함께 전달)
+    uploadVideo(file, saveToDevice, myDevice);
     
-    const newReport = {
-      id: newId,
-      title: '영상 분석 중...',
-      date: new Date().toLocaleString(),
-      plate: '-',
-      status: 'processing', 
-      progressMsg: '서버 연결 대기 중...',
-      videoSrc: null,
-      filename: file.name // 초기 생성 시에도 파일명 저장
-    };
-
-    setReports([newReport, ...reports]); 
-    processVideoAnalysis(newId, file);
-    
+    // 입력 초기화 (같은 파일 다시 선택 가능하게)
     e.target.value = ''; 
   };
 
+  // 5. 삭제 처리 (Context 함수 사용)
+  const handleDelete = async (e, id) => {
+    e.stopPropagation(); // 클릭 이벤트 전파 방지 (상세 페이지 이동 막기)
+    
+    if (window.confirm('정말 삭제하시겠습니까? (서버의 파일도 함께 삭제됩니다)')) {
+      await removeReport(id);
+    }
+  };
+
+  // 6. 업로드 버튼 클릭 트리거
   const handleUploadClick = () => {
     fileInputRef.current.click();
   };
@@ -141,21 +67,22 @@ const Report = () => {
     <div className="screen active">
       <div className="header">
         <h1>신고 관리</h1>
-        <p>내 신고 목록</p>
+        <p>{user ? `${user.nickname}님의 신고 이력` : '로딩 중...'}</p>
       </div>
 
+      {/* 업로드 영역 */}
       <div 
-        style={{ 
-            padding: '24px', 
-            background: '#F8FAFC', 
-            borderRadius: '16px', 
-            margin: '16px', 
-            border: '2px dashed #CBD5E1', 
-            cursor: 'pointer', 
-            textAlign: 'center',
-            transition: 'all 0.2s ease'
-        }} 
         onClick={handleUploadClick}
+        style={{ 
+          padding: '24px', 
+          background: '#F8FAFC', 
+          borderRadius: '16px', 
+          margin: '16px', 
+          border: '2px dashed #CBD5E1', 
+          cursor: 'pointer', 
+          textAlign: 'center',
+          transition: 'all 0.2s ease'
+        }}
         onMouseOver={(e) => e.currentTarget.style.borderColor = '#3B82F6'}
         onMouseOut={(e) => e.currentTarget.style.borderColor = '#CBD5E1'}
       >
@@ -168,13 +95,42 @@ const Report = () => {
         </div>
       </div>
 
-      <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="video/*" onChange={handleFileChange} />
+      {/* 기기 저장 옵션 (기기가 있을 때만 표시) */}
+      {myDevice && (
+        <div style={{ padding: '0 16px', marginBottom: '16px', display:'flex', justifyContent:'center' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'13px', color:'#4B5563', cursor:'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={saveToDevice} 
+                  onChange={(e) => setSaveToDevice(e.target.checked)} 
+                />
+                <span>내 기기 <b>[{myDevice.serialNo}]</b> 에도 영상 저장하기</span>
+            </label>
+        </div>
+      )}
 
-      <div className="report-list">
+      {/* 숨겨진 파일 입력 */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        style={{ display: 'none' }} 
+        accept="video/*" 
+        onChange={handleFileChange} 
+      />
+
+      {/* 리스트 영역 */}
+      <div className="report-list" style={{ paddingBottom: '80px' }}>
+        {reports.length === 0 && (
+          <div style={{textAlign:'center', marginTop:'40px', color:'#94A3B8', fontSize:'14px'}}>
+            저장된 신고 내역이 없습니다.
+          </div>
+        )}
+
         {reports.map((report) => (
           <div 
             key={report.id} 
             className="report-item" 
+            // 처리 완료된 상태에서만 상세 페이지 이동
             onClick={() => report.status === 'complete' && navigate('/report/detail', {state: report})}
             style={{ 
                 opacity: report.status === 'processing' ? 0.9 : 1,
@@ -191,6 +147,7 @@ const Report = () => {
                 boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
             }}
           >
+              {/* 썸네일/아이콘 영역 */}
               <div className="report-thumbnail" style={{ 
                   width: '48px', height: '48px', 
                   borderRadius: '8px', 
@@ -203,10 +160,11 @@ const Report = () => {
                 ) : report.status === 'error' ? (
                     '⚠️'
                 ) : (
-                    '📸'
+                    '📂'
                 )}
               </div>
 
+              {/* 텍스트 정보 영역 */}
               <div className="report-info" style={{ flex: 1 }}>
                   <div className="report-title" style={{ 
                       fontWeight: 'bold', 
@@ -232,20 +190,23 @@ const Report = () => {
                   )}
               </div>
 
+              {/* 상태 뱃지 및 삭제 버튼 */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                  {/* ★ 삭제 버튼: 클릭 시 파일명(report.filename)을 함께 넘김 */}
-                  <div 
-                    onClick={(e) => deleteReport(e, report.id, report.filename)}
-                    style={{ 
-                        cursor: 'pointer', 
-                        color: '#94A3B8', 
-                        fontSize: '14px',
-                        padding: '4px'
-                    }}
-                    title="삭제"
-                  >
-                    ✖
-                  </div>
+                  {/* 삭제 버튼 (처리 중이 아닐 때만 노출) */}
+                  {report.status !== 'processing' && (
+                    <div 
+                      onClick={(e) => handleDelete(e, report.id)}
+                      style={{ 
+                          cursor: 'pointer', 
+                          color: '#94A3B8', 
+                          fontSize: '14px',
+                          padding: '4px'
+                      }}
+                      title="삭제"
+                    >
+                      ✖
+                    </div>
+                  )}
 
                   {report.status === 'complete' && (
                     <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: '#DCFCE7', color: '#166534', fontWeight: '600' }}>
@@ -257,16 +218,12 @@ const Report = () => {
                         제출됨
                     </span>
                   )}
-                  {report.status === 'error' && (
-                    <span style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px', background: '#FEF2F2', color: '#DC2626', fontWeight: '600' }}>
-                        오류
-                    </span>
-                  )}
               </div>
           </div>
         ))}
       </div>
 
+      {/* 스피너 애니메이션 스타일 */}
       <style>{`
         .spinner {
             width: 24px;

@@ -1,5 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+<<<<<<< HEAD
+=======
+import { ReportProvider } from './contexts/ReportContext'; // ★ 추가
+>>>>>>> upstream/master
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
 
@@ -64,9 +68,17 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
+<<<<<<< HEAD
       <Router>
         <AppContent />
       </Router>
+=======
+      <ReportProvider> {/* ★ AuthProvider 안에, Router 밖에 추가 */}
+        <Router>
+          <AppContent />
+        </Router>
+      </ReportProvider>
+>>>>>>> upstream/master
     </AuthProvider>
   );
 }
