@@ -70,7 +70,7 @@ const Report = () => {
 
   // PC용 상세 카드 (원본 유지 + 영상 연결 수정)
   const ReportDetailCard = ({ report, onClose }) => {
-    const [detailContent, setDetailContent] = useState(report.detailContent || '');
+    const [detailContent, setDetailContent] = useState(report.detailContent || report.aiDraft || '');
     // [수정] 영상 연결
     const videoSource = report.videoSrc || report.video_url;
 

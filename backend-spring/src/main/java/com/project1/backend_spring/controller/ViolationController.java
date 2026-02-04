@@ -1,5 +1,4 @@
 package com.project1.backend_spring.controller;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
@@ -50,8 +49,10 @@ public class ViolationController {
 
     // 2. 결과 저장 (ID 파싱 및 위치정보 포함)
     @PostMapping("/violations")
-    public ResponseEntity<String> saveViolation(@RequestBody AnalysisResultDTO dto) {
-        System.out.println("📹 저장 요청: " + dto.getSerialNo());
+    public ResponseEntity<String> saveViolation(@RequestBody IncidentLogDTO dto) {
+        System.out.println("📹 저장 요청 수신: " + dto.getSerialNo());
+        System.out.println("   - AI 초안: " + dto.getAiDraft()); // 로그 확인용
+
         try {
             Integer userId = null;
             // WEB_UPLOAD시 파일명에서 ID 추출 (새로고침 유지용)
@@ -69,32 +70,16 @@ public class ViolationController {
             if (userId == null) userId = userMapper.findUserBySerialNo(dto.getSerialNo());
             if (userId == null) userId = 1;
 
-            IncidentLogDTO logDto = new IncidentLogDTO();
-            logDto.setSerialNo(dto.getSerialNo());
-            logDto.setVideoUrl(dto.getVideoUrl());
-            logDto.setPlateNo(dto.getPlate());
-            
-            String cleanResult = dto.getResult() != null ? dto.getResult().split("\\(")[0].trim() : "Unknown";
-            logDto.setViolationType(cleanResult);
-            
-            try {
-                if(dto.getTime() != null && dto.getTime().contains(" ")) {
-                    String[] parts = dto.getTime().split(" ");
-                    logDto.setIncidentDate(parts[0]);
-                    logDto.setIncidentTime(parts[1]);
-                } else throw new Exception();
-            } catch (Exception e) {
-                LocalDateTime now = LocalDateTime.now();
-                logDto.setIncidentDate(now.toLocalDate().toString());
-                logDto.setIncidentTime(now.toLocalTime().toString().split("\\.")[0]);
-            }
-            
-            logDto.setAiDraft(""); 
-            logDto.setLocation("위치 정보 없음"); // 기본값
+            // ★ 수정됨: 파이썬이 보내준 dto를 그대로 DB에 저장 (더 이상 가공 필요 없음)
+            // 만약 location이나 aiDraft가 null이면 기본값 처리만 살짝 해줌
+            if (dto.getLocation() == null) dto.setLocation("위치 정보 없음");
+            // aiDraft는 파이썬이 보내준 그대로 둠!
 
-            userMapper.insertIncidentLog(logDto);
+            userMapper.insertIncidentLog(dto);
             int logId = userMapper.getLastInsertId();
-            userMapper.insertReport(userId, logId, dto.getSerialNo(), "");
+            
+            // 신고 테이블에도 연결
+            userMapper.insertReport(userId, logId, dto.getSerialNo(), dto.getAiDraft());
             
             return ResponseEntity.ok("Saved");
         } catch (Exception e) {

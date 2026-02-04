@@ -78,7 +78,7 @@ const Report = () => {
 
   // PC용 상세 컴포넌트 (인라인 정의)
   const ReportDetailCard = ({ report, onClose }) => {
-    const [detailContent, setDetailContent] = useState(report.detailContent || '');
+    const [detailContent, setDetailContent] = useState(report.detailContent || report.aiDraft || '');
     
     // ★ [수정 1] 영상 소스: 프론트엔드 URL(videoSrc) 또는 DB URL(video_url)
     const videoSource = report.videoSrc || report.video_url;
