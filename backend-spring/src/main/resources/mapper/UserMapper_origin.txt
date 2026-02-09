@@ -71,7 +71,7 @@
         FROM report r
         JOIN incident_log l ON r.incident_log = l.incident_log
         WHERE r.history_id = #{userId}
-          AND r.is_deleted = 0  ORDER BY r.report_id DESC
+        ORDER BY r.report_id DESC
     </select>
 
     <select id="findVideoUrlByReportId" resultType="String">
@@ -81,11 +81,12 @@
         WHERE r.report_id = #{reportId}
     </select>
 
-    <update id="deleteReport">
-        UPDATE report 
-        SET is_deleted = 1 
-        WHERE report_id = #{reportId}
-    </update>
+    <delete id="deleteReport">
+        DELETE r, l
+        FROM report r
+        JOIN incident_log l ON r.incident_log = l.incident_log
+        WHERE r.report_id = #{reportId}
+    </delete>
 
     <update id="submitReport" parameterType="com.project1.backend_spring.dto.ReportDTO">
         UPDATE report r

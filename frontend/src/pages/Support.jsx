@@ -8,72 +8,67 @@ const Support = () => {
   
   const [showModal, setShowModal] = useState(false);
   const [serialInput, setSerialInput] = useState("");
-  const [myDevice, setMyDevice] = useState(null);
+  
+  const [deviceList, setDeviceList] = useState([]);
+  const [activeDevice, setActiveDevice] = useState(null);
 
-  // ★★★ [문제 해결 핵심] 기기 정보 불러오기 ★★★
-  const fetchMyDevice = async () => {
-    // 1. 유저 정보가 없으면 중단
-    if (!user) {
-        console.log("❌ [fetchMyDevice] 유저 정보 없음");
-        return;
-    }
-
-    // 2. 사용할 ID 결정 (history_id를 우선 사용, 없으면 id 사용)
+  // 내 기기 목록 불러오기
+  const fetchMyDevices = async () => {
+    if (!user) return;
     const targetId = user.history_id || user.id;
-    console.log(`📡 [fetchMyDevice] 기기 조회 시작! 타겟 ID: ${targetId}`);
 
     try {
-        const res = await fetch(`http://192.168.0.40:8080/api/device/${targetId}`);
-        
+        const res = await fetch(`http://localhost:8080/api/device/${targetId}`);
         if (res.ok) {
             const data = await res.json();
-            console.log("✅ [fetchMyDevice] 서버 응답 데이터:", data);
-
-            // 3. 데이터가 '빈 배열'이거나 'null'이면 -> 기기 없음 처리
+            
             if (!data || (Array.isArray(data) && data.length === 0)) {
-                console.log("⚠️ [fetchMyDevice] 등록된 기기가 없습니다.");
-                setMyDevice(null);
+                setDeviceList([]);
+                setActiveDevice(null);
+                // 기기 목록이 없으면 저장된 연결 정보도 삭제
+                localStorage.removeItem('connectedSerial');
                 return;
             }
 
-            // 4. 배열이면 첫 번째 요소 추출, 아니면 그대로 사용
-            const deviceObj = Array.isArray(data) ? data[0] : data;
+            const devices = Array.isArray(data) ? data : [data];
+            setDeviceList(devices);
 
-            // 5. 변수명 대소문자 문제 해결 (serial_no vs serialNo)
-            // DB에서 오는 어떤 이름이든 다 받아내도록 처리
-            const finalSerial = deviceObj.serialNo || deviceObj.serial_no || deviceObj.serialNumber;
+            // ★ [수정됨] 자동 연결 로직 개선
+            // 1. 로컬 스토리지에서 '마지막으로 연결했던 기기 시리얼'을 확인
+            const savedSerial = localStorage.getItem('connectedSerial');
 
-            if (finalSerial) {
-                console.log("🎉 [fetchMyDevice] 기기 찾음:", finalSerial);
-                setMyDevice({ 
-                    ...deviceObj, 
-                    serialNo: finalSerial 
-                });
+            if (savedSerial) {
+                // 저장된 시리얼과 일치하는 기기가 목록에 있는지 확인
+                const targetDevice = devices.find(d => (d.serialNo || d.serial_no) === savedSerial);
+                if (targetDevice) {
+                    setActiveDevice(targetDevice);
+                } else {
+                    // 저장된 건 있는데 목록에 없으면(삭제됨 등) -> 연결 해제
+                    setActiveDevice(null);
+                    localStorage.removeItem('connectedSerial');
+                }
             } else {
-                console.log("❌ [fetchMyDevice] 데이터는 있는데 시리얼 번호를 못 찾음:", deviceObj);
+                // 저장된 연결 정보가 없으면 -> 연결 안 함 (null 유지)
+                setActiveDevice(null);
             }
-
-        } else {
-            console.error("❌ [fetchMyDevice] 서버 응답 오류:", res.status);
         }
     } catch (e) {
-        console.error("❌ [fetchMyDevice] 네트워크 통신 실패:", e);
+        console.error("기기 목록 로드 실패:", e);
     }
   };
 
-  // 화면이 켜질 때 실행
   useEffect(() => {
-    fetchMyDevice();
+    fetchMyDevices();
   }, [user]);
 
   // 로그아웃
   const handleLogout = async () => {
-    try {
-      await fetch('http://192.168.0.40:8000/auth/logout', { method: 'POST' });
-    } catch (error) { console.error(error); } 
-    finally {
-      logout(); 
-      navigate('/login'); 
+    try { await fetch('http://localhost:8000/auth/logout', { method: 'POST' }); } 
+    catch (error) { console.error(error); } 
+    finally { 
+        logout(); 
+        localStorage.removeItem('connectedSerial'); // 로그아웃 시 연결 정보 초기화
+        navigate('/login'); 
     }
   };
 
@@ -81,16 +76,13 @@ const Support = () => {
   const handleDeleteAccount = async () => {
     if (!window.confirm("정말로 탈퇴하시겠습니까?\n복구할 수 없습니다.")) return;
     const targetId = user?.history_id || user?.id;
-    if (!targetId) return;
-
     try {
-        const res = await fetch(`http://192.168.0.40:8080/api/user/${targetId}`, { method: 'DELETE' });
-        if (res.ok) {
-            alert("탈퇴 완료");
+        const res = await fetch(`http://localhost:8080/api/user/${targetId}`, { method: 'DELETE' });
+        if (res.ok) { 
+            alert("탈퇴 완료"); 
             logout(); 
+            localStorage.removeItem('connectedSerial');
             navigate('/login'); 
-        } else {
-            alert("탈퇴 실패");
         }
     } catch (e) { console.error(e); }
   };
@@ -98,12 +90,10 @@ const Support = () => {
   // 기기 등록
   const handleRegisterDevice = async () => {
     if (!serialInput.trim()) return alert("시리얼 번호를 입력해주세요.");
-    
     const targetId = user?.history_id || user?.id;
-    if (!targetId) return alert("로그인 정보가 없습니다.");
-
+    
     try {
-      const res = await fetch('http://192.168.0.40:8080/api/device/register', {
+      const res = await fetch('http://localhost:8080/api/device/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serialNo: serialInput, historyId: targetId })
@@ -111,23 +101,36 @@ const Support = () => {
 
       if (res.ok) {
         alert(`✅ 기기(${serialInput}) 등록 완료!`);
-        // 등록 즉시 화면 반영 (새로고침 불필요)
-        setMyDevice({ serialNo: serialInput });
         setShowModal(false);
         setSerialInput("");
+        fetchMyDevices(); 
       } else {
         alert("등록 실패: 이미 존재하는 기기이거나 오류입니다.");
       }
     } catch (e) { console.error(e); alert("서버 연결 실패"); }
   };
 
-  // 시리얼 복사
-  const handleCopySerial = (e) => {
-    e.stopPropagation(); 
-    if (myDevice) {
-        navigator.clipboard.writeText(myDevice.serialNo);
-        alert(`복사됨: ${myDevice.serialNo}`);
+  // ★ [수정됨] 연동 해제 핸들러
+  const handleDisconnect = (e) => {
+    e.stopPropagation();
+    if (window.confirm("현재 기기와의 연동을 해제하시겠습니까?\n(기기 목록에는 유지됩니다)")) {
+        setActiveDevice(null);
+        localStorage.removeItem('connectedSerial'); // 저장된 연결 정보 삭제
     }
+  };
+
+  // ★ [수정됨] 기기 연결 핸들러
+  const handleConnect = (device) => {
+    setActiveDevice(device);
+    const sNo = device.serialNo || device.serial_no;
+    localStorage.setItem('connectedSerial', sNo); // 연결 정보 저장
+    alert(`기기(${sNo})와 연결되었습니다.`);
+  };
+
+  // 시리얼 복사
+  const handleCopySerial = (serial) => {
+    navigator.clipboard.writeText(serial);
+    alert(`복사됨: ${serial}`);
   };
 
   return (
@@ -137,14 +140,13 @@ const Support = () => {
         <p>내 정보 및 기기 설정</p>
       </div>
 
-      <div style={{ padding: '20px', paddingBottom: '100px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '20px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
         {/* 프로필 카드 */}
         {user && (
             <div className="analytics-card" style={{ 
               background: 'linear-gradient(135deg, #FEF3C7 0%, #FEF9C3 100%)', 
-              border: '1px solid var(--warning-light)', 
-              marginBottom: '20px'
+              border: '1px solid var(--warning-light)', margin: 0
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <div style={{ fontSize: '50px' }}>👤</div>
@@ -163,54 +165,107 @@ const Support = () => {
             </div>
         )}
 
-        {/* ★ 기기 관리 카드 */}
-        <div 
-          className="menu-card" 
-          onClick={myDevice ? handleCopySerial : () => setShowModal(true)}
-          style={{ 
-              border: myDevice ? '1px solid #3B82F6' : '1px solid var(--border-light)',
-              background: myDevice ? '#EFF6FF' : 'white'
-          }}
-        >
-          <div className={`menu-icon ${myDevice ? 'blue' : ''}`} style={{ background: myDevice ? undefined : '#f3f4f6', color: myDevice ? undefined : '#9ca3af' }}>
-              🍓
-          </div>
-          
-          <div className="menu-content">
-            <div className="menu-title" style={{ color: myDevice ? '#1E40AF' : 'var(--text-primary)' }}>
-                {myDevice ? '내 라즈베리파이 (연결됨)' : '기기 등록하기'}
+        {/* 현재 연결된 기기 상태 카드 */}
+        <div style={{ 
+            background: 'white', 
+            borderRadius: '16px', 
+            padding: '20px', 
+            border: activeDevice ? '2px solid #3B82F6' : '1px dashed #ccc',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'12px'}}>
+                <div style={{ fontSize: '32px' }}>{activeDevice ? '📡' : '🔌'}</div>
+                <div>
+                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: activeDevice ? '#1E40AF' : '#666' }}>
+                        {activeDevice ? '현재 연결된 기기' : '연결된 기기가 없습니다'}
+                    </div>
+                    {activeDevice && (
+                        <div style={{ fontSize: '13px', color: '#3B82F6', marginTop: '4px', fontFamily: 'monospace' }}>
+                            {activeDevice.serialNo || activeDevice.serial_no}
+                        </div>
+                    )}
+                </div>
             </div>
-            <div className="menu-desc">
-                {myDevice ? (
-                    <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>
-                        {myDevice.serialNo}
-                    </span>
-                ) : (
-                    '시리얼 번호를 등록해주세요'
-                )}
-            </div>
-          </div>
-          
-          <div className="menu-arrow" style={{ fontSize: '12px', fontWeight: 'bold', color: myDevice ? '#3B82F6' : '#ccc' }}>
-            {myDevice ? '복사' : '+ 등록'}
-          </div>
+            
+            {activeDevice && (
+                <button 
+                    onClick={handleDisconnect}
+                    style={{ 
+                        padding: '6px 12px', borderRadius: '8px', border: '1px solid #fee2e2', 
+                        background: '#fef2f2', color: '#ef4444', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' 
+                    }}
+                >
+                    해제
+                </button>
+            )}
         </div>
 
-        {/* 하단 메뉴들 (디자인 유지) */}
-        <div className="analytics-card" style={{ background: 'linear-gradient(135deg, #DBEAFE 0%, #EFF6FF 100%)', marginTop: '10px' }}>
-          <div style={{ fontSize: '15px', fontWeight: '700', color: '#1E40AF', marginBottom: '12px' }}>📞 고객 지원</div>
-          <div style={{ fontSize: '13px', color: '#4B5563' }}>support@roadguardian.com / 1234-5678</div>
+        {/* 기기 목록 */}
+        <div>
+            <div style={{ fontSize: '15px', fontWeight: '700', color: '#374151', marginBottom: '10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span>📋 내 기기 목록</span>
+                <button onClick={() => setShowModal(true)} style={{ background:'none', border:'none', color:'#3B82F6', fontSize:'13px', fontWeight:'600', cursor:'pointer' }}>+ 새 기기 등록</button>
+            </div>
+
+            {deviceList.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px', background: '#f9fafb', borderRadius: '12px', color: '#9ca3af', fontSize: '13px' }}>
+                    등록된 기기가 없습니다.<br/>새 기기를 등록해주세요.
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {deviceList.map((device, idx) => {
+                        const sNo = device.serialNo || device.serial_no;
+                        const isActive = activeDevice && (activeDevice.serialNo === sNo || activeDevice.serial_no === sNo);
+
+                        return (
+                            <div key={idx} style={{ 
+                                background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e5e7eb',
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                            }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                                    <div style={{ width:'8px', height:'8px', borderRadius:'50%', background: isActive ? '#10B981' : '#D1D5DB' }}></div>
+                                    <div>
+                                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>Raspberry Pi</div>
+                                        <div style={{ fontSize: '12px', color: '#6B7280', fontFamily: 'monospace' }}>{sNo}</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ display:'flex', gap:'8px' }}>
+                                    <button 
+                                        onClick={() => handleCopySerial(sNo)}
+                                        style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e5e7eb', background: 'white', color: '#6B7280', fontSize: '11px', cursor:'pointer' }}
+                                    >
+                                        복사
+                                    </button>
+                                    {!isActive && (
+                                        <button 
+                                            onClick={() => handleConnect(device)}
+                                            style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: '#3B82F6', color: 'white', fontSize: '11px', fontWeight:'bold', cursor:'pointer' }}
+                                        >
+                                            연결
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
 
-        <div className="menu-card" onClick={() => alert("준비 중입니다.")}>
-          <div className="menu-icon green">❓</div>
-          <div className="menu-content"><div className="menu-title">자주 묻는 질문</div></div>
-          <div className="menu-arrow">›</div>
-        </div>
-        
-        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <button className="btn" onClick={handleLogout} style={{ background: 'var(--bg-secondary)', color: 'var(--danger-red)', border: '1px solid var(--border-light)', width: '100%', margin: 0, justifyContent: 'center' }}>로그아웃</button>
-            <div style={{ textAlign: 'center', marginTop: '8px' }}><span onClick={handleDeleteAccount} style={{ fontSize: '12px', color: '#9CA3AF', textDecoration: 'underline', cursor: 'pointer' }}>회원 탈퇴하기</span></div>
+        {/* 하단 메뉴 */}
+        <div style={{ borderTop: '1px solid #eee', paddingTop: '20px' }}>
+            <div className="menu-card" onClick={() => alert("준비 중입니다.")} style={{ margin:0 }}>
+                <div className="menu-icon green">❓</div>
+                <div className="menu-content"><div className="menu-title">자주 묻는 질문</div></div>
+                <div className="menu-arrow">›</div>
+            </div>
+            
+            <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <button className="btn" onClick={handleLogout} style={{ background: 'var(--bg-secondary)', color: 'var(--danger-red)', border: '1px solid var(--border-light)', width: '100%', margin: 0, justifyContent: 'center' }}>로그아웃</button>
+                <div style={{ textAlign: 'center', marginTop: '8px' }}><span onClick={handleDeleteAccount} style={{ fontSize: '12px', color: '#9CA3AF', textDecoration: 'underline', cursor: 'pointer' }}>회원 탈퇴하기</span></div>
+            </div>
         </div>
 
       </div>
@@ -219,7 +274,7 @@ const Support = () => {
       {showModal && (
         <div className="modal active">
           <div className="modal-content">
-            <h3 className="modal-title" style={{ textAlign: 'center' }}>📡 기기 등록</h3>
+            <h3 className="modal-title" style={{ textAlign: 'center' }}>📡 새 기기 등록</h3>
             <p className="modal-desc" style={{ textAlign: 'center' }}>시리얼 번호를 입력해주세요.</p>
             <input type="text" placeholder="예: RPI-XXXX-XXXX" value={serialInput} onChange={(e) => setSerialInput(e.target.value)} className="chat-input-field" style={{ width: '100%', marginBottom: '20px', height: '48px', textAlign: 'center' }} />
             <div className="modal-buttons">

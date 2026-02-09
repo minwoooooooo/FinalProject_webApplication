@@ -101,20 +101,19 @@ public class ViolationController {
             String videoUrl = userMapper.findVideoUrlByReportId(id);
             if (videoUrl != null && !videoUrl.isEmpty()) {
                 try {
-                    // String pythonDeleteUrl = PYTHON_BASE_URL + "/api/delete-video";
-                    // RestTemplate restTemplate = new RestTemplate();
-                    // Map<String, String> body = new HashMap<>();
-                    // body.put("video_url", videoUrl);
-                    // restTemplate.postForObject(pythonDeleteUrl, body, String.class);
+                    String pythonDeleteUrl = PYTHON_BASE_URL + "/api/delete-video";
+                    RestTemplate restTemplate = new RestTemplate();
+                    Map<String, String> body = new HashMap<>();
+                    body.put("video_url", videoUrl);
+                    restTemplate.postForObject(pythonDeleteUrl, body, String.class);
                 } catch (Exception e) {
-                    // System.out.println("⚠️ S3 삭제 실패 (DB만 삭제 진행)");
+                    System.out.println("⚠️ S3 삭제 실패 (DB만 삭제 진행)");
                 }
             }
             // DB 삭제
             userMapper.deleteReport(id);
             return ResponseEntity.ok("Deleted");
         } catch (Exception e) {
-            e.printStackTrace(); // 에러 확인용
             return ResponseEntity.status(500).body("Error");
         }
     }

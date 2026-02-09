@@ -19,6 +19,7 @@ public class ReportDTO {
     
     @JsonProperty("isSubmitted")
     private boolean isSubmitted;
+    private boolean isDeleted;
     // 2. IncidentLog 테이블과 JOIN하여 가져오는 데이터
     private String videoUrl;
     private String violationType; 
