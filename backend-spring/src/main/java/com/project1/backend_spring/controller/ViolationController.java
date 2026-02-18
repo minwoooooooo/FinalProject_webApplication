@@ -18,7 +18,7 @@ import java.util.ArrayList;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
 public class ViolationController {
 
     @Autowired
@@ -68,7 +68,6 @@ public class ViolationController {
             if (userId == null) userId = userMapper.findUserBySerialNo(dto.getSerialNo());
             if (userId == null) userId = 1;
 
-            // ★ 수정됨: 파이썬이 보내준 dto를 그대로 DB에 저장 (더 이상 가공 필요 없음)
             // 만약 location이나 aiDraft가 null이면 기본값 처리만 살짝 해줌
             if (dto.getLocation() == null) dto.setLocation("위치 정보 없음");
             // aiDraft는 파이썬이 보내준 그대로 둠!

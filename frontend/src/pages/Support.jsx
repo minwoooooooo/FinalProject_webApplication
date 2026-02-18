@@ -64,7 +64,7 @@ const Support = () => {
   }, [user]);
 
   const handleLogout = async () => {
-    try { await fetch('http://localhost:8000/auth/logout', { method: 'POST' }); } 
+    try { await fetch('http://localhost:8080/auth/logout', { method: 'POST' }); } 
     catch (error) { console.error(error); } 
     finally { 
         logout(); 

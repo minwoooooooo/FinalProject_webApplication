@@ -124,4 +124,28 @@
         WHERE history_id = #{historyId}
     </update>
     
+    <select id="getAutoReportData" resultType="com.project1.backend_spring.dto.AutoReportRequestDTO">
+        SELECT 
+            u.safety_portal_id AS portalId,    
+            u.safety_portal_pw AS portalPw,    
+            r.phone_number     AS userPhone,   
+            u.user_name        AS userName,
+            
+            il.violation_type  AS title,       
+            r.description      AS content,     
+            il.plate_no        AS carNum,     
+            il.video_url       AS videoUrl,
+        
+            il.location        AS location,    
+            
+            DATE_FORMAT(il.incident_date, '%Y-%m-%d') AS occurDate,
+            DATE_FORMAT(il.incident_time, '%H')       AS occurTimeHh,
+            DATE_FORMAT(il.incident_time, '%i')       AS occurTimeMm
+            
+        FROM report r
+        JOIN user u ON r.history_id = u.history_id
+        JOIN incident_log il ON r.incident_log = il.incident_log
+        WHERE r.report_id = #{reportId}
+    </select>
+
 </mapper>

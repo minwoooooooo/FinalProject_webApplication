@@ -50,9 +50,40 @@ const About = () => {
     }
   };
 
-  const handleAutoReport = () => {
-    alert("안전신문고 자동신고 기능은 준비 중입니다.");
-  };
+  const handleAutoReport = async () => {
+    if (!selectedReport) return;
+
+    // 1. 사용자 확인
+    if (!window.confirm("안전신문고 자동 신고를 시작하시겠습니까?\n(마이페이지에 안전신문고 ID/PW가 저장되어 있어야 합니다)")) {
+        return;
+    }
+
+    try {
+        alert("🤖 자동 신고 봇이 실행됩니다.\n서버에서 브라우저가 열려 작업하는 동안 잠시만 기다려주세요.");
+        
+        // 2. Spring Boot로 요청 전송
+        // (주소: 8080번 사용, credentials 필수)
+        const res = await fetch(`http://localhost:8080/api/reports/${selectedReport.reportId}/auto-report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        });
+
+        if (res.ok) {
+            alert("✅ 자동 신고 작업이 시작되었습니다!\n결과는 잠시 후 안전신문고 앱/사이트에서 확인 가능합니다.");
+        } else {
+            const errorMsg = await res.text();
+            alert("❌ 요청 실패: " + errorMsg);
+            // 만약 ID/PW 문제라면 마이페이지로 이동 제안
+            if (errorMsg.includes("ID/PW")) {
+                // navigate('/support'); // 필요하면 추가
+            }
+        }
+    } catch (error) {
+        console.error("자동 신고 에러:", error);
+        alert("서버 연결 오류가 발생했습니다.");
+    }
+};
 
   // =================================================================
   // [필터링 로직]

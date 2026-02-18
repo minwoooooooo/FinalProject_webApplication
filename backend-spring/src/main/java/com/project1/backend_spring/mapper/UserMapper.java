@@ -6,6 +6,8 @@ import com.project1.backend_spring.dto.UserDTO;
 import com.project1.backend_spring.dto.DeviceDTO;
 import com.project1.backend_spring.dto.IncidentLogDTO;
 import com.project1.backend_spring.dto.ReportDTO;
+import com.project1.backend_spring.dto.*; // ★ 이거 또는 아래 구체적인 import가 필요함
+import com.project1.backend_spring.dto.AutoReportRequestDTO; // ★ 핵심: 이 줄이 없어서 에러 남!
 import java.util.List;
 
 @Mapper
@@ -72,4 +74,6 @@ public interface UserMapper {
                           @Param("portalPw") String portalPw);
 
     int checkPortalIdDuplicate(@Param("portalId") String portalId, @Param("historyId") int historyId);
+
+    AutoReportRequestDTO getAutoReportData(int reportId);
 }

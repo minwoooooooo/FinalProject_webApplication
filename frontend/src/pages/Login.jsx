@@ -16,7 +16,7 @@ const Login = () => {
     try {
       console.log("구글 토큰 수신:", response.credential);
 
-      const res = await fetch('http://localhost:8000/api/auth/google', {
+      const res = await fetch('http://localhost:8080/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: response.credential }),

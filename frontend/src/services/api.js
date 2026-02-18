@@ -1,6 +1,6 @@
 // FastAPI 백엔드와 통신하는 API 서비스
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:8080';
 
 // 교통 위반 로그 가져오기
 export const getViolationLogs = async () => {

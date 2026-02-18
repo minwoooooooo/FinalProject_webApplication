@@ -11,7 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/device")
-@CrossOrigin(origins = "*") // CORS 허용
+@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true") // CORS 허용
 public class DeviceController {
 
     @Autowired
